@@ -141,6 +141,14 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	if err := c.kube.Get(ctx, types.NamespacedName{Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
 		return nil, errors.Wrap(err, errGetPC)
 	}
+	cliCache := getClientFromCache(pc.Name)
+	if cliCache != nil {
+		return &external{
+			logger:      c.logger,
+			client:      *cliCache,
+			localClient: c.kube,
+		}, nil
+	}
 
 	var rc *rest.Config
 	var err error
@@ -181,12 +189,14 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errNewKubernetesClient)
 	}
 
+	cli := &resource.ClientApplicator{
+		Client:     k,
+		Applicator: resource.NewAPIPatchingApplicator(k),
+	}
+	setClientToCache(pc.Name, cli)
 	return &external{
-		logger: c.logger,
-		client: resource.ClientApplicator{
-			Client:     k,
-			Applicator: resource.NewAPIPatchingApplicator(k),
-		},
+		logger:      c.logger,
+		client:      *cli,
 		localClient: c.kube,
 	}, nil
 }
